@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: #0d0a07; color: #f5e2a8;
+    overflow: hidden; height: 100%;
+    font-family: "Patrick Hand", system-ui, sans-serif;
+  }
+
+  .stage {
+    position: fixed; inset: 0; overflow: hidden;
+    background: radial-gradient(ellipse at 50% 60%, #2a2418 0%, #0d0a07 80%);
+  }
+  .diorama {
+    position: absolute; inset: 0;
+    background-image: url("assets/__BG__.png");  /* replace with your bg */
+    background-size: cover; background-position: center;
+    opacity: 0;
+  }
+  .vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.5) 100%);
+    pointer-events: none; z-index: 40;
+  }
+
+  /* characters — one .sprite div per character */
+  .sprite { position: absolute; will-change: transform, opacity; opacity: 0; z-index: 20; }
+  .sprite img {
+    display: block; width: 100%; height: auto;
+    pointer-events: none; user-select: none; -webkit-user-drag: none;
+  }
+  /* customize per-character size + position */
+  .scout  { width: 18%; left: 30%; bottom: 18%; transform-origin: 50% 100%; }
+  .other  { width: 16%; left: 60%; bottom: 18%; transform-origin: 50% 100%; }
+
+  /* dialog bubble — typewriter target structure */
+  .bubble {
+    position: absolute;
+    min-width: 220px; max-width: 380px;
+    padding: 14px 22px 16px;
+    background: #fff8e1;
+    border: 3px solid #4a3520;
+    border-radius: 20px;
+    z-index: 30;
+    box-shadow: 0 6px 0 #4a3520, 0 14px 22px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    transform-origin: 50% 100%;
+  }
+  .bubble::before {
+    content: ""; position: absolute; bottom: -22px; left: 50%; margin-left: -11px;
+    width: 0; height: 0; border-style: solid;
+    border-width: 22px 11px 0 11px;
+    border-color: #4a3520 transparent transparent transparent;
+  }
+  .bubble::after {
+    content: ""; position: absolute; bottom: -16px; left: 50%; margin-left: -8px;
+    width: 0; height: 0; border-style: solid;
+    border-width: 17px 8px 0 8px;
+    border-color: #fff8e1 transparent transparent transparent;
+  }
+  .bubble .who {
+    font-family: "Fredoka", sans-serif; font-weight: 700;
+    font-size: 11px; letter-spacing: 0.2em; color: #785D3D;
+    margin-bottom: 6px; text-transform: uppercase;
+  }
+  .bubble .text {
+    font-family: "ZCOOL KuaiLe", "Patrick Hand", "PingFang SC", system-ui, sans-serif;
+    font-size: 26px; line-height: 1.35; color: #2a1a0a;
+    font-weight: 700; min-height: 1.35em;
+  }
+  .bubble .caret {
+    display: inline-block; width: 4px; background: #2a1a0a; margin-left: 2px;
+    animation: blink 0.55s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* example prop: tear drop on scout's forehead */
+  .tear {
+    position: absolute; width: 56px; height: 76px;
+    z-index: 22; opacity: 0; pointer-events: none;
+    filter: drop-shadow(0 3px 5px rgba(0,0,0,0.55));
+  }
+
+  .black { position: absolute; inset: 0; background: #050200; z-index: 70; pointer-events: none; }
+  .replay {
+    position: absolute; top: 16px; right: 16px;
+    background: #D9AA56; border: 2px solid #4a3520; color: #4a3520;
+    padding: 8px 16px; font-family: "Fredoka", sans-serif; font-weight: 700;
+    font-size: 12px; letter-spacing: 0.15em; cursor: pointer;
+    z-index: 100; border-radius: 12px; box-shadow: 0 3px 0 #4a3520;
+  }
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+  <div class="diorama" id="diorama"></div>
+
+  <!-- characters — copy/adapt -->
+  <div class="sprite scout" id="scout">
+    <img src="assets/scout.png" alt="scout" />
+    <!-- emoter props nest INSIDE the sprite div they belong to -->
+    <svg class="tear" id="tear" viewBox="0 0 26 36"
+         data-owner="scout" data-anchor="forehead" data-emotion="sad"
+         style="left:30%; top:-12%;">
+      <path d="M13 3 C7 14, 3 22, 5 28 C6 32, 10 34, 13 34 C16 34, 20 32, 21 28 C23 22, 19 14, 13 3 Z"
+            fill="#5a9bd4" stroke="#1f3550" stroke-width="2"/>
+    </svg>
+  </div>
+  <div class="sprite other" id="other">
+    <img src="assets/other.png" alt="other" />
+  </div>
+
+  <!-- single bubble DOM element; manifest can swap text via multiple dialog entries -->
+  <div class="bubble" id="bubble">
+    <div class="who" id="bubbleWho">SCOUT</div>
+    <div class="text"><span id="bubbleText"></span><span class="caret">&nbsp;</span></div>
+  </div>
+
+  <div class="vignette"></div>
+  <div class="black" id="black"></div>
+
+  <button class="replay" id="replay">REPLAY</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<!-- adjust the relative path to wherever timeline-lib.js lives -->
+<script src="../../../scripts/timeline-lib.js"></script>
+<script>
+  // ---------- MANIFEST ----------
+  // STORY: <one-sentence summary>
+  //
+  // EMOTION ARC PER CHARACTER:
+  //   scout: neutral(0.6-T1) → SAD(T1-T2) → ...
+  //   other: ...
+  //
+  // MUTEX CHECK: scout.SAD (T1-T2) MUST end before scout.HAPPY (T3-T4) begins.
+  //   Verified: gap = (T3-T2)s ≥ 0. ✓
+
+  window.MANIFEST = {
+    duration: 10,
+    cast: [
+      // === ACT 1: setup ===
+      { id: "scout", kind: "sprite", from: 0.6 },
+      { id: "other", kind: "sprite", from: 0.8 },
+
+      // === ACT 2: dialog + emotional prop ===
+      { id: "bubble", kind: "dialog", from: 2.0, to: 4.5,
+        owner: "scout", text: "（你的第一句台词）" },
+      { id: "tear", kind: "prop", from: 3.0, to: 4.0,
+        owner: "scout", anchor: "forehead", emotion: "sad" },
+
+      // === ACT 3: ... ===
+    ],
+  };
+
+  gsap.defaults({ ease: "power2.out" });
+
+  function play() {
+    // === reset ===
+    gsap.set("#black",   { autoAlpha: 1 });
+    gsap.set("#diorama", { autoAlpha: 0, scale: 1.04 });
+    gsap.set("#scout",   { autoAlpha: 0, x: -200, y: 0 });
+    gsap.set("#other",   { autoAlpha: 0, x:  200, y: 0 });
+    gsap.set("#bubble",  { autoAlpha: 0, y: 30, scale: 0.7,
+      xPercent: -50, left: "30%", bottom: "44%", top: "auto" });
+    gsap.set("#tear",    { autoAlpha: 0, scale: 0.6 });
+
+    const tl = gsap.timeline();
+
+    // === apply manifest — handles all autoAlpha + dialog typewriter ===
+    applyManifest(window.MANIFEST, tl);
+
+    // === scene fade in (non-cast) ===
+    tl.to("#black",   { autoAlpha: 0, duration: 0.5 }, 0.0)
+      .to("#diorama", { autoAlpha: 1, scale: 1, duration: 1.0 }, 0.1);
+
+    // === MOTION ONLY below — autoAlpha is managed by manifest ===
+    tl.to("#scout", { x: 0, duration: 1.2, ease: "power2.out" }, 0.6);
+    tl.to("#other", { x: 0, duration: 1.2, ease: "power2.out" }, 0.8);
+
+    // bubble pop motion
+    tl.to("#bubble", { y: 0, scale: 1, duration: 0.4, ease: "back.out(1.8)" }, 2.0);
+
+    // tear scale-in motion
+    tl.fromTo("#tear",
+      { scale: 0.4, y: -8 },
+      { scale: 1, y: 0, duration: 0.3, ease: "back.out(2)" }, 3.0);
+
+    return tl;
+  }
+
+  let current = play();
+  window.current = current;
+  document.getElementById("replay").addEventListener("click", () => {
+    current.kill();
+    gsap.killTweensOf("*");
+    current = play();
+    window.current = current;
+  });
+</script>
+</body>
+</html>
