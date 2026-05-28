@@ -9,18 +9,29 @@
 //
 // Cast entry schema:
 //   {
-//     id:      "scout" | "walker" | "bubble" | "tear" | ...   (DOM id)
-//     kind:    "sprite" | "prop" | "dialog" | "particle-burst" | "title"
+//     id:      "scout" | "walker" | "bubble" | "tear" | ...   (DOM id, or for
+//                 kind=overlay: a unique key per-instance — entry creates a new
+//                 DOM node via spawnOverlay)
+//     kind:    "sprite" | "prop" | "dialog" | "particle-burst" | "title" | "overlay"
 //     from:    seconds, when entity becomes visible
 //     to:      seconds, when entity fades out
-//     owner:   (optional) DOM id of the owning character (for props)
+//     owner:   (optional) DOM id of the owning character (for props/overlays)
 //     anchor:  (optional) one of: forehead | face | head-side | chest | feet |
 //              held-hand | held-front | floating-above
 //     emotion: (optional) sad | happy | lovestruck | panicked | shocked | ...
 //     text:    (optional) for dialog entries — the line typed out
+//     overlay: (optional, for kind=overlay) name from OVERLAY_VOCAB
+//                (e.g. "sweat-drop", "question-mark", "heart")
+//     position:(optional, for kind=overlay) { left, top, width } CSS values
+//                applied to the auto-spawned overlay SVG
 //     fadeIn:  (optional) duration of fade-in, default 0.3
 //     fadeOut: (optional) duration of fade-out, default 0.3
 //   }
+//
+// `kind: "overlay"` entries auto-spawn an SVG (from OVERLAY_VOCAB) into the
+// owner's sprite div at first render. Loading order: include
+// `<script src="path/to/overlays.js">` BEFORE this lib so window.spawnOverlay
+// is available.
 
 (function (global) {
   const DEFAULT_FADE_IN  = 0.3;
@@ -32,6 +43,32 @@
       return;
     }
     for (const entry of manifest.cast) {
+      // ---- kind: overlay — auto-spawn from OVERLAY_VOCAB into owner's sprite div ----
+      if (entry.kind === "overlay") {
+        const ownerEl = document.getElementById(entry.owner);
+        if (!ownerEl) {
+          console.warn(`applyManifest overlay ${entry.id}: no owner #${entry.owner}`);
+          continue;
+        }
+        if (typeof window.spawnOverlay !== "function") {
+          console.warn(`applyManifest overlay ${entry.id}: spawnOverlay() unavailable — include overlays.js before timeline-lib.js`);
+          continue;
+        }
+        const svg = window.spawnOverlay(ownerEl, entry.overlay, entry.position || {});
+        if (!svg) continue;
+        svg.id = entry.id;                 // so harness + GSAP can target by id
+        const fIn  = entry.fadeIn  ?? DEFAULT_FADE_IN;
+        const fOut = entry.fadeOut ?? DEFAULT_FADE_OUT;
+        tl.fromTo(svg,
+          { autoAlpha: 0, scale: 0.6 },
+          { autoAlpha: 1, scale: 1, duration: fIn, ease: "back.out(2)" },
+          entry.from);
+        if (entry.to != null && entry.to < manifest.duration) {
+          tl.to(svg, { autoAlpha: 0, scale: 0.8, duration: fOut, ease: "power2.out" }, entry.to);
+        }
+        continue;
+      }
+
       const el = document.getElementById(entry.id);
       if (!el) {
         // particle-burst etc. may not map to a single DOM id — skip silently

@@ -40,31 +40,40 @@ Then proceed.
 ## Core abstraction: MANIFEST
 
 Every animation declares one. It is the single source of truth for what's
-visible when, who owns what prop, and what emotional state each character
-is in at each beat. The harness derives all logical-consistency checks
-from this declaration — anchor zones, owner-window containment, emotion
-temporal mutex — so there's no need to enumerate per-bug rules.
+visible when, who owns what prop, what emotional state each character is
+in, AND **what dramatic beats structure the story**. The harness derives
+all logical-consistency AND writing-quality checks from this declaration.
 
 Schema (full reference: `references/manifest-spec.md`):
 
 ```js
 window.MANIFEST = {
-  duration: 13,                        // total animation length in seconds
+  duration: 13,
+  // === Writing-side metadata (REQUIRED, enforced by harness) ===
+  genre: "reveal",  // physical-comedy | chase | reveal | transform | impact-gag
+                    // (dialog-drama is BLOCKED — see "tool capability" below)
+  beats: [
+    // narrative beat sheet: hook (≤2s) → setup → escalate → twist → punch (>70% of duration)
+    { t: 0.6,  kind: "hook",     owner: "walker", action: "shamble-in"     },
+    { t: 4.5,  kind: "setup",    owner: "walker", action: "weep-touched"   },
+    { t: 6.65, kind: "twist",    owner: "fatty",  action: "demand-debt"    },
+    { t: 9.2,  kind: "punch",    owner: "walker", action: "shock-flee"     },
+  ],
+
+  // === Cast — what's on stage when ===
   cast: [
-    // SPRITES — full characters
-    { id: "scout", kind: "sprite", from: 0.6 },
-
-    // PROPS — emotion indicators or held objects, with owner + anchor
+    { id: "walker", kind: "sprite", from: 0.6 },
     { id: "tear", kind: "prop", from: 4.5, to: 5.4,
-      owner: "scout", anchor: "forehead", emotion: "sad" },
-
-    // DIALOG — typewriter-driven bubble text
+      owner: "walker", anchor: "forehead", emotion: "sad" },
     { id: "bubble", kind: "dialog", from: 2.5, to: 6.5,
-      owner: "scout", text: "你也在做这个循环吧？" },
-
-    // PARTICLE-BURST — multiple JS-spawned instances; manifest = doc only
+      owner: "fatty", text: "兄弟...这些年..." },
+    // SVG OVERLAY auto-spawned from vocabulary (see scripts/overlays.js)
+    { id: "sweat1", kind: "overlay", from: 3.0, to: 4.5,
+      owner: "walker", overlay: "sweat-drop", emotion: "sad",
+      position: { left: "20%", top: "-5%", width: "16px" } },
+    // PARTICLE-BURST — JS-spawned; manifest entry is doc + mutex input only
     { id: "hearts-burst", kind: "particle-burst", from: 5.5, to: 6.5,
-      owner: "scout", emotion: "happy" },
+      owner: "walker", emotion: "happy" },
   ],
 };
 ```
@@ -90,27 +99,51 @@ window.MANIFEST = {
 have overlapping `[from, to]` time windows. The harness checks this
 deterministically (interval-intersection).
 
-## Runtime helper: applyManifest
+## Runtime helpers: timeline-lib + overlays
 
-The skill bundles `scripts/timeline-lib.js` (≈80 lines, no deps). The
-animation's HTML loads it and calls `applyManifest(window.MANIFEST, tl)`,
-which auto-injects all `autoAlpha` fade-in/fade-out tweens + dialog
-typewriter. Business code only writes MOTION (position / scale /
-rotation / loops) — never visibility.
+The skill bundles two runtime scripts (≈300 lines total, no deps):
 
 ```html
-<script src="path/to/scripts/timeline-lib.js"></script>
+<script src="path/to/scripts/overlays.js"></script>        <!-- comic-vocab SVGs -->
+<script src="path/to/scripts/timeline-lib.js"></script>    <!-- applyManifest -->
 <script>
   window.MANIFEST = { ... };
   function play() {
     const tl = gsap.timeline();
-    applyManifest(window.MANIFEST, tl);     // visibility + dialog text
-    // motion tweens below
+    applyManifest(window.MANIFEST, tl);     // visibility + dialog + overlay spawn
+    // motion-only tweens below — autoAlpha is fully managed.
     tl.to("#scout", { x: 0, duration: 1.4 }, 0.6);
-    // ...
   }
 </script>
 ```
+
+**`overlays.js`** exposes a comic-style SVG vocabulary — sweat-drop,
+question-mark, exclaim, shock-balloon, zzz, sparkle-star, speed-line,
+shake-mark, impact-burst, cotton-poof, ellipsis, thought-cloud,
+heart, heart-eyes, tear-drop. Use them via `kind: "overlay"` cast entries
+or imperatively via `window.spawnOverlay(parentDiv, name, position)`.
+
+These overlays are the **escape valve** for single-PNG sprite limitations.
+You can't animate a sprite's mouth, but you CAN drop an `exclaim`
+balloon over its head to convey shock — same readability for a fraction
+of the budget.
+
+## Why genre + beats are MANDATORY
+
+Our tools are **Keaton/Newgrounds tools**, not Pixar tools — they can do
+MACRO motion (translate / scale / rotate / pose-swap / prop physics) but
+NOT MICRO acting (eye blink, mouth sync, subtle limb gestures on a
+single PNG). Scripts that rely on micro-acting produce stiff, lifeless
+animations.
+
+The `genre` + `beats` fields force the author to structure the story
+around motion, not around dialogue/expression. The harness gate refuses
+`genre: dialog-drama` and refuses manifests where `dialog` text exceeds
+`duration × 8` chars (so the typewriter doesn't eat the visual budget).
+
+**If you find yourself writing a sit-and-talk skit, stop**. Either:
+1. Rewrite as physical comedy / chase / reveal / transform / impact-gag, OR
+2. Add face-parts kit assets (multiple head expressions per character) — out of scope for v1 of this skill.
 
 ## Static harness: check.mjs
 
@@ -189,8 +222,12 @@ Organize your animation work as:
 ## Files in this skill
 
 - `SKILL.md` — this file
-- `scripts/check.mjs` — static harness (run via Node ≥18)
-- `scripts/timeline-lib.js` — runtime helper (load via `<script>`)
+- `scripts/check.mjs` — static harness (run via Node ≥18) — now validates
+  genre + beats structure + dialog density on top of anchor / owner / mutex
+- `scripts/timeline-lib.js` — runtime: applyManifest auto-fades + dialog
+  typewriter + overlay spawn
+- `scripts/overlays.js` — 15 comic-style SVG primitives (sweat / heart /
+  exclaim / zzz / thought-cloud / cotton-poof / etc.)
 - `references/manifest-spec.md` — full MANIFEST schema with edge cases
 - `references/playbook.md` — 5-phase workflow + 11 pitfalls
 - `references/anchor-zones.md` — anchor zone reference card

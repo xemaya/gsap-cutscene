@@ -360,6 +360,77 @@ if (!manifestMatch) {
       if (issues.owner.length)  fail("MANIFEST owner-window violation", issues.owner.join("; "));
       if (issues.mutex.length)  fail("MANIFEST emotion mutex (TEMPORAL OVERLAP)", issues.mutex.join("; "));
     }
+
+    // ---- 9f: Sprint-1 writing-side gate (genre + beats + dialog-density) ----
+    // Our tools are Keaton/Newgrounds tools, not Pixar tools — they can do MACRO
+    // motion (translate / scale / rotate / pose-swap / prop physics) but NOT MICRO
+    // acting (eye blink / mouth sync / subtle limb gestures on a single PNG).
+    //
+    // This gate refuses "dialog-drama" manifests structurally so micro-acting
+    // scripts get rejected at lint time instead of producing stiff animations.
+
+    const ALLOWED_GENRES = ["physical-comedy","chase","reveal","transform","impact-gag","dialog-drama"];
+    const BEAT_KINDS = ["hook","setup","escalate","twist","punch","beat"];
+    const writeIssues = [];
+
+    // 9f-1: genre declared + in enum
+    if (!manifest.genre) {
+      writeIssues.push("missing `genre` field — declare one of: " + ALLOWED_GENRES.filter(g => g !== "dialog-drama").join("/"));
+    } else if (!ALLOWED_GENRES.includes(manifest.genre)) {
+      writeIssues.push(`unknown genre "${manifest.genre}"; allowed: ${ALLOWED_GENRES.join("/")}`);
+    } else if (manifest.genre === "dialog-drama") {
+      writeIssues.push(`genre=dialog-drama is BLOCKED — our tools can't do micro-acting. Pick a motion-driven genre or augment with face-parts kit.`);
+    }
+
+    // 9f-2: beats[] present + structured
+    const beats = Array.isArray(manifest.beats) ? manifest.beats : null;
+    if (!beats) {
+      writeIssues.push("missing `beats[]` field — declare at least hook + escalate + punch");
+    } else {
+      // each beat schema
+      for (const b of beats) {
+        if (b.t == null || b.t < 0 || b.t > dur) writeIssues.push(`beat t=${b.t} out of [0, ${dur}]`);
+        if (!BEAT_KINDS.includes(b.kind)) writeIssues.push(`beat kind "${b.kind}" not in ${BEAT_KINDS.join("/")}`);
+        if (b.owner && !spriteWindows[b.owner]) writeIssues.push(`beat owner #${b.owner} not in cast sprites`);
+        if (b.owner && b.t != null) {
+          const ow = spriteWindows[b.owner];
+          if (ow && (b.t < ow.from || b.t > ow.to)) {
+            writeIssues.push(`beat owner #${b.owner} not visible at t=${b.t}s (sprite window ${ow.from}-${ow.to})`);
+          }
+        }
+      }
+      // hook ≤ 2s
+      const hooks = beats.filter(b => b.kind === "hook");
+      if (hooks.length === 0) writeIssues.push("missing `hook` beat (the opening grabber, t ≤ 2.0s)");
+      else if (hooks.some(b => b.t > 2.0)) writeIssues.push(`hook beat must be ≤ 2.0s, got t=${hooks[0].t}`);
+
+      // ≥ 1 escalate
+      if (!beats.some(b => b.kind === "escalate")) {
+        writeIssues.push("missing `escalate` beat (the middle escalation — pattern repeat/break)");
+      }
+
+      // punch beat in last 30% of timeline
+      const punches = beats.filter(b => b.kind === "punch");
+      if (punches.length === 0) writeIssues.push("missing `punch` beat (the payoff, t > duration × 0.7)");
+      else if (punches.every(b => b.t < dur * 0.7)) {
+        writeIssues.push(`punch beat must be in last 30% (t > ${(dur * 0.7).toFixed(1)}s), got t=${punches[0].t}`);
+      }
+    }
+
+    // 9f-3: dialog density — total chars ≤ duration × 8 (typewriter shouldn't eat the visual budget)
+    const dialogChars = cast.filter(e => e.kind === "dialog" && e.text)
+                            .reduce((sum, e) => sum + e.text.length, 0);
+    const dialogBudget = Math.floor(dur * 8);
+    if (dialogChars > dialogBudget) {
+      writeIssues.push(`dialog density too high: ${dialogChars} chars > budget ${dialogBudget} (duration × 8). Trim text or shift visual storytelling.`);
+    }
+
+    if (writeIssues.length === 0 && manifest.genre) {
+      ok(`MANIFEST writing-gate passed`,
+         `genre=${manifest.genre}, beats=${beats ? beats.length : 0}, dialog=${dialogChars}/${dialogBudget} chars`);
+    } else if (writeIssues.length) {
+      fail("MANIFEST writing gate", writeIssues.join("; "));
+    }
   }
 }
 
